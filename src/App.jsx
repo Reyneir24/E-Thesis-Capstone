@@ -7,7 +7,7 @@ import { Navbar } from './components/Navbar'
 import { Sidebar } from './components/Sidebar'
 import { RightPanel } from './components/RightPanel'
 
-// Student Pages
+// Student Pagess
 import { StudentDashboard } from './pages/StudentDashboard'
 import { StudentUpload } from './pages/StudentUpload'
 import { StudentSubmissions } from './pages/StudentSubmissions'
