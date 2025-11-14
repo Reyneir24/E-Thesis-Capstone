@@ -248,7 +248,7 @@ Light Gray:       #F5F5F5  (Neutral background, borders)
 
 ---
 
-## 📋 DEMO CREDENTIALS
+## 📋 DEMO CREDENTIALSS
 
 ```
 STUDENT:
