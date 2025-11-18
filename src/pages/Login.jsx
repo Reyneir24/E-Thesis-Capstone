@@ -51,9 +51,9 @@ export function Login() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <img src={logo} alt="Thesis Pro" className="w-16 h-16" />
+            <img src={logo} alt="East System Colleges of Rizal" className="w-16 h-16" />
           </div>
-          <h1 className="text-4xl font-bold text-escr-red mb-2">Thesis Pro</h1>
+          <h1 className="text-4xl font-bold text-escr-red mb-2">East System Colleges of Rizal</h1>
           <p className="text-gray-600">E-Thesis & Capstone Management System</p>
         </div>
 
