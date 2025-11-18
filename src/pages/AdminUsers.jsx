@@ -112,6 +112,11 @@ export function AdminUsers() {
           role: formData.role,
           updated_at: new Date().toISOString()
         }
+        // If admin supplied a new password during edit, include it and clear first_login
+        if (formData.password) {
+          updateData.password = formData.password
+          updateData.first_login = false
+        }
         
         const { data: updated, error: updateErr } = await supabase
           .from('profiles')
@@ -138,6 +143,8 @@ export function AdminUsers() {
           email: formData.email,
           role: formData.role,
           created_at: new Date().toISOString(),
+          // include password if provided by admin
+          ...(formData.password ? { password: formData.password, first_login: false } : {}),
         }
 
         const { data: inserted, error: insertErr } = await supabase.from('profiles').insert([newUser]).select().single()

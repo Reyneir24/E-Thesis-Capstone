@@ -312,3 +312,21 @@ USING (
   AND auth.uid() IN (SELECT id FROM profiles WHERE role = 'admin')
 );
 */
+
+-- ============================================================================
+-- 14. ADD PASSWORD AND FIRST_LOGIN COLUMNS TO PROFILES (SAFE)
+-- Run this migration to ensure the `profiles` table contains the
+-- `password` (TEXT) and `first_login` (BOOLEAN) columns required
+-- by the client-side onboarding flow. Uses IF NOT EXISTS so it is safe
+-- to run multiple times.
+-- ============================================================================
+
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS password TEXT;
+
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS first_login BOOLEAN DEFAULT FALSE;
+
+-- Backfill existing rows to ensure explicit default values
+UPDATE profiles SET first_login = FALSE WHERE first_login IS NULL;
+
