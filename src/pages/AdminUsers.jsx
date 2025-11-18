@@ -3,6 +3,15 @@ import { Users, Mail, Trash2, AlertCircle, Edit2 } from 'lucide-react'
 import { supabase } from '../utils/supabase'
 import { useAuth } from '../context/AuthContext'
 
+// Function to generate UUID v4
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 export function AdminUsers() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -123,7 +132,7 @@ export function AdminUsers() {
       } else {
         // Create new user in Supabase
         const newUser = {
-          id: `user-${Date.now()}`,
+          id: generateUUID(),
           name: formData.name,
           email: formData.email,
           role: formData.role,
