@@ -54,10 +54,11 @@ export function AdminUsers() {
 
       // If no users in DB yet, seed with mock users (dev only)
       if (!data || data.length === 0) {
+        const timestamp = new Date().toISOString()
         const mockUsers = [
-          { id: 'student-001', name: 'John Student', email: 'student@example.com', role: 'student', created_at: new Date().toISOString() },
-          { id: 'adviser-001', name: 'Dr. Jane Adviser', email: 'adviser@example.com', role: 'adviser', created_at: new Date().toISOString() },
-          { id: 'admin-001', name: 'Admin User', email: 'admin@example.com', role: 'admin', created_at: new Date().toISOString() },
+          { id: '550e8400-e29b-41d4-a716-446655440001', name: 'John Student', email: 'student@example.com', role: 'student', created_at: timestamp },
+          { id: '550e8400-e29b-41d4-a716-446655440004', name: 'Dr. Jane Adviser', email: 'adviser@example.com', role: 'adviser', created_at: timestamp },
+          { id: '550e8400-e29b-41d4-a716-446655440006', name: 'Admin User', email: 'admin@example.com', role: 'admin', created_at: timestamp },
         ]
         const { data: inserted, error: insertErr } = await supabase.from('profiles').insert(mockUsers)
         if (insertErr) {

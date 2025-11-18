@@ -130,10 +130,16 @@ export function AdminDashboard() {
               Manage Assignments
             </button>
             <button 
-              onClick={() => navigate('/admin/reports')}
+              onClick={() => navigate('/admin/analytics')}
               className="w-full py-3 px-4 bg-escr-orange hover:bg-orange-700 text-white rounded-lg transition font-medium"
             >
-              View Reports
+              View Analytics
+            </button>
+            <button 
+              onClick={() => navigate('/admin/settings')}
+              className="w-full py-3 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition font-medium"
+            >
+              System Settings
             </button>
           </div>
         </div>

@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
-import { FileText, MessageSquare, Calendar } from 'lucide-react'
+import { FileText, MessageSquare, Calendar, Send, Loader2 } from 'lucide-react'
 
 export function StudentSubmissions() {
   const { profile } = useAuth()
   const [submissions, setSubmissions] = useState([])
   const [selectedSubmission, setSelectedSubmission] = useState(null)
-  const [feedback, setFeedback] = useState([])
+  const [feedbackHistory, setFeedbackHistory] = useState([])
   const [loading, setLoading] = useState(true)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [comment, setComment] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     fetchSubmissions()
@@ -31,7 +35,6 @@ export function StudentSubmissions() {
       setSubmissions(data || [])
     } catch (error) {
       console.error('Error fetching submissions:', error)
-      // Fallback to localStorage
       try {
         const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
         const userSubmissions = allSubmissions.filter((s) => s.student_id === profile?.id)
@@ -44,28 +47,104 @@ export function StudentSubmissions() {
     }
   }
 
-  async function fetchFeedback(submissionId) {
+  function normalizeFeedback(data = []) {
+    return data.map((entry) => ({
+      id: entry.id,
+      comment: entry.comment,
+      created_at: entry.created_at,
+      author_id: entry.adviser_id,
+      authorName: entry.profiles?.name || entry.authorName || 'Unknown User',
+      authorRole: entry.profiles?.role || entry.authorRole || (entry.adviser_id === profile?.id ? profile.role : 'adviser'),
+    }))
+  }
+
+  async function fetchFeedback(submission) {
+    if (!submission?.id) return
+    setError('')
+    setHistoryLoading(true)
+
     try {
       const { data, error } = await supabase
         .from('feedback')
-        .select('*')
-        .eq('submission_id', submissionId)
-        .order('created_at', { ascending: false })
+        .select(
+          `
+            id,
+            comment,
+            created_at,
+            adviser_id,
+            profiles:adviser_id (
+              name,
+              role
+            )
+          `
+        )
+        .eq('submission_id', submission.id)
+        .order('created_at', { ascending: true })
 
       if (error) throw error
-      setFeedback(data || [])
-      setSelectedSubmission(submissionId)
+      setFeedbackHistory(normalizeFeedback(data))
+      setSelectedSubmission(submission)
     } catch (error) {
       console.error('Error fetching feedback:', error)
-      // Fallback to localStorage
+      setError('Unable to load feedback history.')
       try {
         const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
-        const submissionFeedback = allFeedback.filter((f) => f.submission_id === submissionId)
-        setFeedback(submissionFeedback)
-        setSelectedSubmission(submissionId)
+        const submissionFeedback = allFeedback.filter((f) => f.submission_id === submission.id)
+        setFeedbackHistory(normalizeFeedback(submissionFeedback))
+        setSelectedSubmission(submission)
       } catch (fallbackError) {
         console.error('Fallback error:', fallbackError)
       }
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  async function handleAddComment() {
+    if (!selectedSubmission || !comment.trim()) return
+    setSending(true)
+    setError('')
+
+    try {
+      const { error: insertError } = await supabase
+        .from('feedback')
+        .insert([
+          {
+            submission_id: selectedSubmission.id,
+            adviser_id: profile.id,
+            comment: comment.trim(),
+          },
+        ])
+
+      if (insertError) throw insertError
+
+      setComment('')
+      await fetchFeedback(selectedSubmission)
+    } catch (err) {
+      console.error('Student feedback error:', err)
+      setError(err.message || 'Unable to send comment.')
+
+      // Fallback to localStorage for offline dev scenarios
+      try {
+        const newEntry = {
+          id: `feedback-${Date.now()}`,
+          submission_id: selectedSubmission.id,
+          adviser_id: profile.id,
+          comment: comment.trim(),
+          created_at: new Date().toISOString(),
+          authorName: profile?.name,
+          authorRole: profile?.role,
+        }
+        const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
+        allFeedback.push(newEntry)
+        localStorage.setItem('feedback', JSON.stringify(allFeedback))
+        setComment('')
+        setFeedbackHistory((prev) => [...prev, normalizeFeedback([newEntry])[0]])
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
+    } finally {
+      setSending(false)
     }
   }
 
@@ -109,9 +188,9 @@ export function StudentSubmissions() {
               {submissions.map((submission) => (
                 <button
                   key={submission.id}
-                  onClick={() => fetchFeedback(submission.id)}
+                  onClick={() => fetchFeedback(submission)}
                   className={`w-full p-4 rounded-lg border-2 text-left transition ${
-                    selectedSubmission === submission.id
+                    selectedSubmission?.id === submission.id
                       ? 'border-escr-red bg-red-50'
                       : 'border-gray-200 hover:border-escr-yellow bg-neutral-gray'
                   }`}
@@ -137,28 +216,87 @@ export function StudentSubmissions() {
         </div>
       </div>
 
-      {/* Feedback Panel */}
+      {/* Conversation Panel */}
       <div className="lg:col-span-1">
         <div className="bg-white rounded-lg shadow-soft p-6 sticky top-6">
-          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <MessageSquare size={20} />
-            Feedback
-          </h3>
-          {selectedSubmission && feedback.length > 0 ? (
-            <div className="space-y-4">
-              {feedback.map((fb) => (
-                <div key={fb.id} className="p-4 bg-neutral-gray rounded-lg">
-                  <p className="text-sm text-gray-800">{fb.comment}</p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {new Date(fb.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              ))}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <MessageSquare size={20} />
+              Feedback Conversation
+            </h3>
+            {historyLoading && (
+              <Loader2 className="animate-spin text-escr-red" size={18} />
+            )}
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              {error}
             </div>
-          ) : selectedSubmission ? (
-            <p className="text-sm text-gray-500 text-center py-8">No feedback yet</p>
+          )}
+
+          {!selectedSubmission ? (
+            <p className="text-sm text-gray-500 text-center py-8">Select a submission to view the conversation.</p>
           ) : (
-            <p className="text-sm text-gray-500 text-center py-8">Select a submission to view feedback</p>
+            <>
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+                {feedbackHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-6">No feedback yet. Start the conversation!</p>
+                ) : (
+                  feedbackHistory.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={`p-4 rounded-lg border ${
+                        entry.author_id === profile?.id ? 'bg-escr-red/10 border-escr-red/30' : 'bg-neutral-gray border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span className="font-semibold text-gray-700">
+                          {entry.authorName}{' '}
+                          <span className="uppercase tracking-wide text-[10px] text-gray-400">
+                            {entry.authorRole || (entry.author_id === profile?.id ? 'student' : 'adviser')}
+                          </span>
+                        </span>
+                        <span>{new Date(entry.created_at).toLocaleString()}</span>
+                      </div>
+                      <p className="text-sm text-gray-800 mt-2 whitespace-pre-line">{entry.comment}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Comment Box */}
+              <div className="mt-6 border-t pt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Add your comment
+                </label>
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Share updates or ask questions..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-escr-red focus:border-transparent outline-none resize-none"
+                  disabled={sending}
+                />
+                <button
+                  onClick={handleAddComment}
+                  disabled={sending || !comment.trim()}
+                  className="mt-3 w-full py-2 px-4 bg-escr-red text-white rounded-lg font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {sending ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      Send Comment
+                    </>
+                  )}
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>

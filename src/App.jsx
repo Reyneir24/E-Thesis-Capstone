@@ -22,6 +22,8 @@ import { AdminDashboard } from './pages/AdminDashboard'
 import { AdminUsers } from './pages/AdminUsers'
 import { AdminAssignments } from './pages/AdminAssignments'
 import { AdminReports } from './pages/AdminReports'
+import { AdminAnalytics } from './pages/AdminAnalytics'
+import { AdminSettings } from './pages/AdminSettings'
 
 function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -155,6 +157,26 @@ function App() {
               <ProtectedRoute requiredRole="admin">
                 <DashboardLayout>
                   <AdminReports />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/analytics"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <DashboardLayout>
+                  <AdminAnalytics />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/settings"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <DashboardLayout>
+                  <AdminSettings />
                 </DashboardLayout>
               </ProtectedRoute>
             }

@@ -1,24 +1,55 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
-import { FileText, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { FileText, Clock, CheckCircle, AlertCircle, User } from 'lucide-react'
 
 export function AdviserDashboard() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [submissions, setSubmissions] = useState([])
   const [feedbackCount, setFeedbackCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!profile?.id) return
+
     fetchData()
+
+    const channel = supabase
+      .channel(`adviser-dashboard-${profile.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'thesis_submissions' },
+        () => fetchData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'feedback', filter: `adviser_id=eq.${profile.id}` },
+        () => fetchData()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [profile?.id])
 
   async function fetchData() {
+    if (!profile?.id) return
     try {
       // Get all submissions (for demo, adviser sees all)
       const { data: submissionsData, error: submissionsError } = await supabase
         .from('thesis_submissions')
-        .select('*')
+        .select(
+          `
+            *,
+            student:profiles!thesis_submissions_student_id_fkey (
+              name,
+              email
+            )
+          `
+        )
         .order('created_at', { ascending: false })
 
       if (submissionsError) throw submissionsError
@@ -51,10 +82,22 @@ export function AdviserDashboard() {
     }
   }
 
+  function handleReview(submission) {
+    if (!submission?.id) return
+    try {
+      localStorage.setItem('selectedSubmissionId', submission.id)
+    } catch (error) {
+      console.error('Unable to cache selected submission:', error)
+    }
+    navigate('/adviser/reviews')
+  }
+
+  const studentCount = new Set(submissions.map((s) => s.student_id)).size
   const stats = [
     { label: 'Total Submissions', value: submissions.length, icon: FileText, color: 'escr-red' },
     { label: 'Pending Reviews', value: submissions.filter((s) => s.status === 'Submitted').length, icon: Clock, color: 'escr-orange' },
     { label: 'Feedback Given', value: feedbackCount, icon: CheckCircle, color: 'green-600' },
+    { label: 'Assigned Students', value: studentCount, icon: User, color: 'escr-yellow' },
   ]
 
   const getStatusColor = (status) => {
@@ -125,11 +168,20 @@ export function AdviserDashboard() {
                 <div key={submission.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-neutral-gray transition">
                   <div>
                     <p className="font-medium text-gray-800">{submission.title}</p>
-                    <p className="text-sm text-gray-500">
-                      {new Date(submission.created_at).toLocaleDateString()}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Submitted by{' '}
+                      <span className="font-semibold text-gray-700">
+                        {submission.student?.name || 'Unknown Student'}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(submission.created_at).toLocaleString()}
                     </p>
                   </div>
-                  <button className="px-4 py-2 bg-escr-red text-white rounded-lg hover:bg-red-700 transition text-sm font-medium">
+                  <button
+                    onClick={() => handleReview(submission)}
+                    className="px-4 py-2 bg-escr-red text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                  >
                     Review
                   </button>
                 </div>
@@ -146,8 +198,11 @@ export function AdviserDashboard() {
             <div key={submission.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
               <div>
                 <p className="font-medium text-gray-800">{submission.title}</p>
-                <p className="text-sm text-gray-500">
-                  {new Date(submission.created_at).toLocaleDateString()}
+                <p className="text-xs text-gray-500">
+                  Student: {submission.student?.name || 'Unknown'} ({submission.student?.email || 'N/A'})
+                </p>
+                <p className="text-xs text-gray-400">
+                  Submitted: {new Date(submission.created_at).toLocaleString()}
                 </p>
               </div>
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(submission.status)}`}>

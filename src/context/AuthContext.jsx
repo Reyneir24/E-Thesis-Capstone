@@ -2,23 +2,29 @@ import React, { createContext, useState, useEffect } from 'react'
 import { supabase } from '../utils/supabase'
 
 // Mock user database (no Supabase Auth)
+const DEMO_IDS = {
+  student: '550e8400-e29b-41d4-a716-446655440001',
+  adviser: '550e8400-e29b-41d4-a716-446655440004',
+  admin: '550e8400-e29b-41d4-a716-446655440006',
+}
+
 const MOCK_USERS = {
   'student@example.com': {
-    id: 'student-001',
+    id: DEMO_IDS.student,
     name: 'John Student',
     email: 'student@example.com',
     password: 'password123',
     role: 'student',
   },
   'adviser@example.com': {
-    id: 'adviser-001',
+    id: DEMO_IDS.adviser,
     name: 'Dr. Jane Adviser',
     email: 'adviser@example.com',
     password: 'password123',
     role: 'adviser',
   },
   'admin@example.com': {
-    id: 'admin-001',
+    id: DEMO_IDS.admin,
     name: 'Admin User',
     email: 'admin@example.com',
     password: 'password123',
@@ -34,13 +40,25 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const normalizeUser = (user) => {
+      if (!user?.id) return user
+      if (user.id === 'student-001') return { ...user, id: DEMO_IDS.student }
+      if (user.id === 'adviser-001') return { ...user, id: DEMO_IDS.adviser }
+      if (user.id === 'admin-001') return { ...user, id: DEMO_IDS.admin }
+      return user
+    }
+
     // Check localStorage for logged in user
     const storedUser = localStorage.getItem('currentUser')
     if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser)
-        setProfile(parsedUser)
-        setUser({ id: parsedUser.id, email: parsedUser.email })
+        const normalized = normalizeUser(parsedUser)
+        if (normalized.id !== parsedUser.id) {
+          localStorage.setItem('currentUser', JSON.stringify(normalized))
+        }
+        setProfile(normalized)
+        setUser({ id: normalized.id, email: normalized.email })
       } catch (error) {
         console.error('Error parsing stored user:', error)
       }
@@ -82,8 +100,17 @@ export function AuthProvider({ children }) {
             .select()
             .maybeSingle()
 
-          if (insertErr) console.error('Supabase insert profile error:', insertErr)
-          profileData = inserted || toInsert
+          if (insertErr) {
+            console.error('Supabase insert profile error:', insertErr)
+            const { data: fallback } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('email', email)
+              .maybeSingle()
+            profileData = fallback || toInsert
+          } else {
+            profileData = inserted || toInsert
+          }
         }
 
         const userData = {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
-import { BarChart3, TrendingUp, Users, FileText, CheckCircle } from 'lucide-react'
+import { BarChart3, TrendingUp, Users, FileText, CheckCircle, Clock, XCircle, Calendar, Download } from 'lucide-react'
 
 export function AdminReports() {
   const { profile } = useAuth()
@@ -18,6 +18,8 @@ export function AdminReports() {
   const [loading, setLoading] = useState(true)
   const [submissions, setSubmissions] = useState([])
   const [error, setError] = useState('')
+  const [profiles, setProfiles] = useState([])
+  const [feedback, setFeedback] = useState([])
 
   useEffect(() => {
     fetchReports()
@@ -64,11 +66,57 @@ export function AdminReports() {
       })
 
       setSubmissions(allSubmissions || [])
+      setProfiles(allProfiles || [])
+      setFeedback(allFeedback || [])
     } catch (error) {
       console.error('Error fetching reports:', error)
       setError(error.message)
+      
+      // Fallback to localStorage
+      try {
+        const localSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        const localFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
+        setSubmissions(localSubmissions)
+        setFeedback(localFeedback)
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  function exportReport() {
+    try {
+      const reportData = {
+        generatedAt: new Date().toISOString(),
+        summary: {
+          totalSubmissions: reports.totalSubmissions,
+          approved: reports.approvedSubmissions,
+          pending: reports.pendingSubmissions,
+          rejected: reports.rejectedSubmissions,
+          approvalRate: approvalRate,
+        },
+        submissions: submissions.map(sub => ({
+          title: sub.title,
+          status: sub.status,
+          submittedAt: sub.created_at,
+          student: profiles.find(p => p.id === sub.student_id)?.name || 'Unknown',
+        })),
+      }
+
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `thesis-report-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Error exporting report:', error)
+      setError('Failed to export report')
     }
   }
 
@@ -118,8 +166,28 @@ export function AdminReports() {
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-gradient-to-r from-escr-red to-escr-orange rounded-lg shadow-soft p-8 text-white">
-        <h1 className="text-3xl font-bold mb-2">System Reports</h1>
-        <p className="text-sm opacity-90">Comprehensive analytics and statistics</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">System Reports</h1>
+            <p className="text-sm opacity-90">Comprehensive analytics and statistics</p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={fetchReports}
+              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition flex items-center gap-2"
+            >
+              <BarChart3 size={18} />
+              Refresh
+            </button>
+            <button
+              onClick={exportReport}
+              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition flex items-center gap-2"
+            >
+              <Download size={18} />
+              Export
+            </button>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -195,49 +263,94 @@ export function AdminReports() {
         </div>
       </div>
 
+      {/* Status Distribution Chart */}
+      <div className="bg-white rounded-lg shadow-soft p-6">
+        <h3 className="text-lg font-bold text-gray-800 mb-4">Status Distribution</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center p-4 bg-escr-yellow bg-opacity-10 rounded-lg">
+            <div className="text-2xl font-bold text-escr-yellow">{reports.pendingSubmissions}</div>
+            <div className="text-sm text-gray-600 mt-1">Pending</div>
+          </div>
+          <div className="text-center p-4 bg-escr-orange bg-opacity-10 rounded-lg">
+            <div className="text-2xl font-bold text-escr-orange">
+              {submissions.filter(s => s.status === 'For Revision').length}
+            </div>
+            <div className="text-sm text-gray-600 mt-1">For Revision</div>
+          </div>
+          <div className="text-center p-4 bg-green-100 rounded-lg">
+            <div className="text-2xl font-bold text-green-600">{reports.approvedSubmissions}</div>
+            <div className="text-sm text-gray-600 mt-1">Approved</div>
+          </div>
+          <div className="text-center p-4 bg-red-100 rounded-lg">
+            <div className="text-2xl font-bold text-red-600">{reports.rejectedSubmissions}</div>
+            <div className="text-sm text-gray-600 mt-1">Rejected</div>
+          </div>
+        </div>
+      </div>
+
       {/* Submissions Breakdown Table */}
       <div className="bg-white rounded-lg shadow-soft overflow-hidden">
-        <div className="p-6 border-b">
+        <div className="p-6 border-b flex items-center justify-between">
           <h3 className="text-lg font-bold text-gray-800">Recent Submissions</h3>
+          <span className="text-sm text-gray-500">{submissions.length} total</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Title</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Submitted</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Feedback</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {submissions.length === 0 ? (
                 <tr>
-                  <td colSpan="3" className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
                     No submissions yet
                   </td>
                 </tr>
               ) : (
-                submissions.slice(0, 10).map((sub) => (
-                  <tr key={sub.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm text-gray-700">{sub.title}</td>
-                    <td className="px-6 py-4 text-sm">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          sub.status === 'Approved'
-                            ? 'bg-green-100 text-green-800'
-                            : sub.status === 'Submitted'
-                            ? 'bg-escr-yellow bg-opacity-20 text-gray-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {sub.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {new Date(sub.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))
+                submissions.slice(0, 10).map((sub) => {
+                  const student = profiles.find(p => p.id === sub.student_id)
+                  const submissionFeedback = feedback.filter(f => f.submission_id === sub.id)
+                  
+                  return (
+                    <tr key={sub.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm text-gray-700 font-medium">{sub.title}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {student?.name || 'Unknown'}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            sub.status === 'Approved'
+                              ? 'bg-green-100 text-green-800'
+                              : sub.status === 'Submitted'
+                              ? 'bg-escr-yellow bg-opacity-20 text-gray-800'
+                              : sub.status === 'For Revision'
+                              ? 'bg-escr-orange bg-opacity-20 text-gray-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {sub.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {new Date(sub.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {submissionFeedback.length > 0 ? (
+                          <span className="text-escr-red font-medium">{submissionFeedback.length}</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>

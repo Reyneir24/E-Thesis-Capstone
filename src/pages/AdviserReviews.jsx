@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
-import { MessageSquare, FileText, CheckCircle, AlertCircle } from 'lucide-react'
+import { MessageSquare, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 
 export function AdviserReviews() {
   const { profile } = useAuth()
@@ -12,21 +12,138 @@ export function AdviserReviews() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [feedbackHistory, setFeedbackHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const pendingSelectionId = useRef(localStorage.getItem('selectedSubmissionId'))
+  const studentFilterRef = useRef(localStorage.getItem('selectedStudentId'))
+  const studentFilterNameRef = useRef(localStorage.getItem('selectedStudentName'))
+  const activeSubmissionRef = useRef(null)
 
   useEffect(() => {
+    activeSubmissionRef.current = selectedSubmission?.id || null
+  }, [selectedSubmission])
+
+  useEffect(() => {
+    if (!profile?.id) return
+
     fetchSubmissions()
+
+    const channel = supabase
+      .channel(`adviser-reviews-${profile.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'thesis_submissions' },
+        () => fetchSubmissions(activeSubmissionRef.current || undefined)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'feedback' },
+        () => fetchSubmissions(activeSubmissionRef.current || undefined)
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [profile?.id])
 
-  async function fetchSubmissions() {
+  function normalizeFeedback(entries = []) {
+    return entries.map((entry) => ({
+      id: entry.id,
+      comment: entry.comment,
+      created_at: entry.created_at,
+      author_id: entry.adviser_id,
+      authorName: entry.profiles?.name || entry.authorName || (entry.adviser_id === profile?.id ? profile?.name : 'Student'),
+      authorRole: entry.profiles?.role || entry.authorRole || (entry.adviser_id === profile?.id ? 'adviser' : 'student'),
+    }))
+  }
+
+  async function loadFeedbackHistory(submissionId) {
+    if (!submissionId) {
+      setFeedbackHistory([])
+      return
+    }
+    setHistoryLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('feedback')
+        .select(
+          `
+            id,
+            comment,
+            created_at,
+            adviser_id,
+            profiles:adviser_id (
+              name,
+              role
+            )
+          `
+        )
+        .eq('submission_id', submissionId)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+      setFeedbackHistory(normalizeFeedback(data))
+    } catch (error) {
+      console.error('Error loading feedback history:', error)
+      setError('Unable to load feedback history.')
+      try {
+        const cached = JSON.parse(localStorage.getItem('feedback') || '[]')
+        const submissionFeedback = cached.filter((f) => f.submission_id === submissionId)
+        setFeedbackHistory(normalizeFeedback(submissionFeedback))
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  async function fetchSubmissions(targetSelectionId) {
     try {
       // Get all submissions for review
-      const { data, error: fetchError } = await supabase
+      let query = supabase
         .from('thesis_submissions')
-        .select('*')
-        .order('created_at', { ascending: false })
+        .select(
+          `
+            *,
+            student:profiles!thesis_submissions_student_id_fkey (
+              name,
+              email
+            )
+          `
+        )
+
+      if (studentFilterRef.current) {
+        query = query.eq('student_id', studentFilterRef.current)
+      }
+
+      const { data, error: fetchError } = await query.order('created_at', { ascending: false })
 
       if (fetchError) throw fetchError
       setSubmissions(data || [])
+      const activeSelectionId = targetSelectionId || pendingSelectionId.current
+      if (activeSelectionId) {
+        const preselect = (data || []).find((submission) => submission.id === activeSelectionId)
+        if (preselect) {
+          setSelectedSubmission(preselect)
+          setStatus(preselect.status || 'Submitted')
+          await loadFeedbackHistory(preselect.id)
+          try {
+            localStorage.removeItem('selectedSubmissionId')
+          } catch (storageError) {
+            console.error('Failed to clear cached selection:', storageError)
+          }
+        }
+        pendingSelectionId.current = null
+      } else if (studentFilterRef.current && data && data.length > 0) {
+        setSelectedSubmission(data[0])
+        setStatus(data[0].status || 'Submitted')
+        await loadFeedbackHistory(data[0].id)
+      } else if (!targetSelectionId) {
+        setSelectedSubmission(null)
+        setFeedbackHistory([])
+      }
     } catch (error) {
       console.error('Error fetching submissions:', error)
       setError(error.message)
@@ -43,6 +160,19 @@ export function AdviserReviews() {
     }
   }
 
+  function clearStudentFilter() {
+    try {
+      localStorage.removeItem('selectedStudentId')
+      localStorage.removeItem('selectedStudentName')
+    } catch (error) {
+      console.error('Failed to clear student filter:', error)
+    }
+    studentFilterRef.current = null
+    studentFilterNameRef.current = null
+    pendingSelectionId.current = null
+    fetchSubmissions()
+  }
+
   async function handleSubmitFeedback() {
     if (!selectedSubmission) return
 
@@ -56,7 +186,6 @@ export function AdviserReviews() {
           .from('feedback')
           .insert([
             {
-              id: `feedback-${Date.now()}`,
               submission_id: selectedSubmission.id,
               adviser_id: profile.id,
               comment: feedback,
@@ -96,6 +225,8 @@ export function AdviserReviews() {
             adviser_id: profile.id,
             comment: feedback,
             created_at: new Date().toISOString(),
+            authorName: profile?.name,
+            authorRole: profile?.role,
           })
           localStorage.setItem('feedback', JSON.stringify(allFeedback))
         }
@@ -108,10 +239,10 @@ export function AdviserReviews() {
         )
         localStorage.setItem('submissions', JSON.stringify(updatedSubmissions))
         
-        await fetchSubmissions()
-        setSelectedSubmission(null)
-        setFeedback('')
         setStatus('Submitted')
+        setFeedback('')
+        await fetchSubmissions(selectedSubmission.id)
+        await loadFeedbackHistory(selectedSubmission.id)
       } catch (fallbackError) {
         console.error('Fallback error:', fallbackError)
       }
@@ -150,6 +281,22 @@ export function AdviserReviews() {
       <div className="lg:col-span-2">
         <div className="bg-white rounded-lg shadow-soft p-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Review Queue</h2>
+          {studentFilterRef.current && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between text-sm">
+              <div>
+                Viewing submissions for{' '}
+                <span className="font-semibold text-gray-800">
+                  {studentFilterNameRef.current || 'selected student'}
+                </span>
+              </div>
+              <button
+                onClick={clearStudentFilter}
+                className="text-escr-red font-semibold text-xs hover:underline"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
           {submissions.length === 0 ? (
             <div className="text-center py-12">
               <FileText size={48} className="text-gray-300 mx-auto mb-4" />
@@ -161,8 +308,14 @@ export function AdviserReviews() {
                 <button
                   key={submission.id}
                   onClick={() => {
+                    try {
+                      localStorage.removeItem('selectedSubmissionId')
+                    } catch (storageError) {
+                      console.error('Failed to clear cached selection:', storageError)
+                    }
                     setSelectedSubmission(submission)
-                    setStatus(submission.status)
+                    setStatus(submission.status || 'Submitted')
+                    loadFeedbackHistory(submission.id)
                   }}
                   className={`w-full p-4 rounded-lg border-2 text-left transition ${
                     selectedSubmission?.id === submission.id
@@ -174,8 +327,11 @@ export function AdviserReviews() {
                     <div>
                       <p className="font-medium text-gray-800">{submission.title}</p>
                       <p className="text-sm text-gray-500 mt-1">{submission.description}</p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {new Date(submission.created_at).toLocaleDateString()}
+                      <p className="text-xs text-gray-500 mt-2">
+                        Student: {submission.student?.name || 'Unknown'} ({submission.student?.email || 'N/A'})
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Submitted: {new Date(submission.created_at).toLocaleString()}
                       </p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(submission.status)}`}>
@@ -244,6 +400,39 @@ export function AdviserReviews() {
               >
                 {submitting ? 'Submitting...' : 'Submit Feedback'}
               </button>
+
+              {/* History */}
+              <div className="pt-4 border-t">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-gray-700">Conversation History</p>
+                  {historyLoading && <Loader2 className="animate-spin text-escr-red" size={18} />}
+                </div>
+                {feedbackHistory.length === 0 ? (
+                  <p className="text-xs text-gray-500 text-center py-4">No comments yet.</p>
+                ) : (
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                    {feedbackHistory.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={`p-3 rounded-lg border text-sm ${
+                          entry.author_id === profile?.id ? 'bg-escr-red/10 border-escr-red/30' : 'bg-neutral-gray border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span className="font-semibold text-gray-700">
+                            {entry.authorName}{' '}
+                            <span className="uppercase tracking-wide text-[10px] text-gray-400">
+                              {entry.authorRole}
+                            </span>
+                          </span>
+                          <span>{new Date(entry.created_at).toLocaleString()}</span>
+                        </div>
+                        <p className="mt-2 text-gray-800 whitespace-pre-line">{entry.comment}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <p className="text-sm text-gray-500 text-center py-8">Select a submission to review</p>
