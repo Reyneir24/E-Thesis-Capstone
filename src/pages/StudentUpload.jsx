@@ -4,6 +4,15 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
 import { Upload, File, AlertCircle, CheckCircle } from 'lucide-react'
 
+// Function to generate UUID v4
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 export function StudentUpload() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -42,13 +51,14 @@ export function StudentUpload() {
 
       // Create new submission in Supabase
       const newSubmission = {
-        id: `submission-${Date.now()}`,
+        id: generateUUID(),
         student_id: profile.id,
         title,
         description,
         file_url: `/uploads/${file?.name}`,
         status: 'Submitted',
         adviser_id: null,
+        created_at: new Date().toISOString(),
       }
 
       const { error: insertError } = await supabase
@@ -78,7 +88,7 @@ export function StudentUpload() {
       // Fallback: save to localStorage if Supabase fails
       try {
         const submission = {
-          id: `submission-${Date.now()}`,
+          id: generateUUID(),
           student_id: profile.id,
           title,
           description,
