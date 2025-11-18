@@ -126,7 +126,6 @@ export function AdminUsers() {
           id: `user-${Date.now()}`,
           name: formData.name,
           email: formData.email,
-          password: formData.password,
           role: formData.role,
           created_at: new Date().toISOString(),
         }
