@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react'
+import { supabase } from '../utils/supabase'
 
 // Mock user database (no Supabase Auth)
 const MOCK_USERS = {
@@ -52,25 +53,78 @@ export function AuthProvider({ children }) {
       // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 500))
 
+      // First try quick-login with MOCK_USERS for testing convenience
       const mockUser = MOCK_USERS[email]
+      if (mockUser && mockUser.password === password) {
+        // Try to fetch profile from Supabase; create if missing
+        const { data: existing, error: fetchErr } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', email)
+          .maybeSingle()
 
-      if (!mockUser || mockUser.password !== password) {
-        return {
-          data: null,
-          error: { message: 'Invalid email or password' },
+        if (fetchErr) {
+          console.error('Supabase fetch profile error:', fetchErr)
         }
+
+        let profileData = existing
+
+        if (!existing) {
+          const toInsert = {
+            id: mockUser.id,
+            name: mockUser.name,
+            email: mockUser.email,
+            role: mockUser.role,
+          }
+          const { data: inserted, error: insertErr } = await supabase
+            .from('profiles')
+            .insert([toInsert])
+            .select()
+            .maybeSingle()
+
+          if (insertErr) console.error('Supabase insert profile error:', insertErr)
+          profileData = inserted || toInsert
+        }
+
+        const userData = {
+          id: profileData.id,
+          name: profileData.name,
+          email: profileData.email,
+          role: profileData.role,
+        }
+
+        localStorage.setItem('currentUser', JSON.stringify(userData))
+        setUser({ id: userData.id, email: userData.email })
+        setProfile(userData)
+
+        return { data: { user: userData }, error: null }
       }
 
-      // Success - store user in localStorage
+      // If not a quick-login, try to find profile directly in Supabase (no auth)
+      const { data: profileFromDb, error: profileErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle()
+
+      if (profileErr) {
+        return { data: null, error: profileErr }
+      }
+
+      if (!profileFromDb) {
+        return { data: null, error: { message: 'Invalid email or password' } }
+      }
+
+      // If profile exists and we are not enforcing password, allow login for demo
       const userData = {
-        id: mockUser.id,
-        name: mockUser.name,
-        email: mockUser.email,
-        role: mockUser.role,
+        id: profileFromDb.id,
+        name: profileFromDb.name,
+        email: profileFromDb.email,
+        role: profileFromDb.role,
       }
 
       localStorage.setItem('currentUser', JSON.stringify(userData))
-      setUser({ id: mockUser.id, email: mockUser.email })
+      setUser({ id: userData.id, email: userData.email })
       setProfile(userData)
 
       return { data: { user: userData }, error: null }

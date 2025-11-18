@@ -260,7 +260,7 @@ ADVISER:
   Password: password123
 
 ADMIN:
-  Email: admin@example.com
+  Email: x  
   Password: password123
 ```
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react'
+import logo from '../components/logo.png'
 
 export function Login() {
   const navigate = useNavigate()
@@ -49,10 +50,8 @@ export function Login() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-block p-4 bg-escr-red rounded-full mb-4">
-            <div className="w-12 h-12 bg-escr-yellow rounded-full flex items-center justify-center">
-              <span className="text-2xl font-bold text-escr-red">📚</span>
-            </div>
+          <div className="flex items-center justify-center mb-4">
+            <img src={logo} alt="Thesis Pro" className="w-16 h-16" />
           </div>
           <h1 className="text-4xl font-bold text-escr-red mb-2">Thesis Pro</h1>
           <p className="text-gray-600">E-Thesis & Capstone Management System</p>

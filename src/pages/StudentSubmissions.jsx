@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../utils/supabase'
 import { FileText, MessageSquare, Calendar } from 'lucide-react'
 
 export function StudentSubmissions() {
@@ -13,26 +14,58 @@ export function StudentSubmissions() {
     fetchSubmissions()
   }, [profile?.id])
 
-  function fetchSubmissions() {
+  async function fetchSubmissions() {
     try {
-      const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
-      const userSubmissions = allSubmissions.filter((s) => s.student_id === profile?.id)
-      setSubmissions(userSubmissions)
+      if (!profile?.id) {
+        setLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('thesis_submissions')
+        .select('*')
+        .eq('student_id', profile.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setSubmissions(data || [])
     } catch (error) {
       console.error('Error fetching submissions:', error)
+      // Fallback to localStorage
+      try {
+        const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        const userSubmissions = allSubmissions.filter((s) => s.student_id === profile?.id)
+        setSubmissions(userSubmissions)
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  function fetchFeedback(submissionId) {
+  async function fetchFeedback(submissionId) {
     try {
-      const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
-      const submissionFeedback = allFeedback.filter((f) => f.submission_id === submissionId)
-      setFeedback(submissionFeedback)
+      const { data, error } = await supabase
+        .from('feedback')
+        .select('*')
+        .eq('submission_id', submissionId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setFeedback(data || [])
       setSelectedSubmission(submissionId)
     } catch (error) {
       console.error('Error fetching feedback:', error)
+      // Fallback to localStorage
+      try {
+        const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
+        const submissionFeedback = allFeedback.filter((f) => f.submission_id === submissionId)
+        setFeedback(submissionFeedback)
+        setSelectedSubmission(submissionId)
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     }
   }
 

@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { LogOut, Menu } from 'lucide-react'
+import logo from './logo.png'
 
 export function Navbar({ onMenuClick }) {
   const navigate = useNavigate()
@@ -22,7 +23,10 @@ export function Navbar({ onMenuClick }) {
           >
             <Menu size={24} />
           </button>
-          <h1 className="text-2xl font-bold text-escr-red">Thesis Pro</h1>
+          <div className="flex items-center gap-3">
+            <img src={logo} alt="Thesis Pro" className="w-8 h-8" />
+            <h1 className="text-2xl font-bold text-escr-red">Thesis Pro</h1>
+          </div>
         </div>
 
         <div className="flex items-center gap-6">

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../utils/supabase'
 import { Bell, Check } from 'lucide-react'
+import logo from './logo.png'
 
 export function RightPanel() {
   const { profile } = useAuth()
@@ -12,39 +14,57 @@ export function RightPanel() {
     fetchNotifications()
   }, [profile?.id])
 
-  function fetchNotifications() {
+  async function fetchNotifications() {
     try {
-      // Get notifications from localStorage
-      const storedNotifications = JSON.parse(
-        localStorage.getItem('notifications') || '[]'
-      )
-      
-      // Filter for current user and limit to 10
-      const userNotifications = storedNotifications
-        .filter((n) => n.user_id === profile?.id)
-        .slice(0, 10)
+      if (!profile?.id) {
+        return
+      }
 
-      setNotifications(userNotifications)
+      // Fetch notifications from Supabase
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(10)
 
-      const unread = userNotifications.filter((n) => !n.is_read).length
+      if (error) throw error
+
+      setNotifications(data || [])
+      const unread = (data || []).filter((n) => !n.is_read).length
       setUnreadCount(unread)
     } catch (error) {
       console.error('Error fetching notifications:', error)
+      
+      // Fallback to localStorage
+      try {
+        const storedNotifications = JSON.parse(
+          localStorage.getItem('notifications') || '[]'
+        )
+        const userNotifications = storedNotifications
+          .filter((n) => n.user_id === profile?.id)
+          .slice(0, 10)
+
+        setNotifications(userNotifications)
+        const unread = userNotifications.filter((n) => !n.is_read).length
+        setUnreadCount(unread)
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     }
   }
 
-  function markAsRead(notificationId) {
+  async function markAsRead(notificationId) {
     try {
-      const storedNotifications = JSON.parse(
-        localStorage.getItem('notifications') || '[]'
-      )
+      // Update in Supabase
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notificationId)
 
-      const updated = storedNotifications.map((n) =>
-        n.id === notificationId ? { ...n, is_read: true } : n
-      )
-      
-      localStorage.setItem('notifications', JSON.stringify(updated))
+      if (error) throw error
 
+      // Update local state
       setNotifications((prev) =>
         prev.map((n) =>
           n.id === notificationId ? { ...n, is_read: true } : n
@@ -53,11 +73,36 @@ export function RightPanel() {
       setUnreadCount((prev) => Math.max(0, prev - 1))
     } catch (error) {
       console.error('Error marking notification as read:', error)
+      
+      // Fallback to localStorage
+      try {
+        const storedNotifications = JSON.parse(
+          localStorage.getItem('notifications') || '[]'
+        )
+        const updated = storedNotifications.map((n) =>
+          n.id === notificationId ? { ...n, is_read: true } : n
+        )
+        localStorage.setItem('notifications', JSON.stringify(updated))
+
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === notificationId ? { ...n, is_read: true } : n
+          )
+        )
+        setUnreadCount((prev) => Math.max(0, prev - 1))
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     }
   }
 
   return (
     <div className="bg-white rounded-lg shadow-soft p-6 h-full overflow-y-auto">
+      {/* Logo */}
+      <div className="flex justify-center mb-4">
+        <img src={logo} alt="Thesis Pro" className="w-12 h-12" />
+      </div>
+
       {/* Profile Card */}
       <div className="mb-6 pb-6 border-b border-gray-200">
         <div className="flex flex-col items-center text-center">

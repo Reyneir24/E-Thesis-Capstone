@@ -2,6 +2,7 @@ import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { LayoutDashboard, Upload, FileText, Users, Settings, X } from 'lucide-react'
+import logo from './logo.png'
 
 export function Sidebar({ isOpen, onClose }) {
   const location = useLocation()
@@ -48,7 +49,10 @@ export function Sidebar({ isOpen, onClose }) {
       >
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-escr-red">Thesis Pro</h2>
+            <div className="flex items-center gap-3">
+              <img src={logo} alt="Thesis Pro" className="w-8 h-8" />
+              <h2 className="text-xl font-bold text-escr-red">Thesis Pro</h2>
+            </div>
             <button onClick={onClose} className="lg:hidden">
               <X size={24} />
             </button>

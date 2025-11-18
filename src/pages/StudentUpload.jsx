@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../utils/supabase'
 import { Upload, File, AlertCircle, CheckCircle } from 'lucide-react'
 
 export function StudentUpload() {
@@ -33,31 +34,68 @@ export function StudentUpload() {
     setLoading(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      if (!profile?.id) {
+        setError('User profile not found')
+        setLoading(false)
+        return
+      }
 
-      // Mock submission - in real app would save to database
-      const submission = {
+      // Create new submission in Supabase
+      const newSubmission = {
         id: `submission-${Date.now()}`,
         student_id: profile.id,
         title,
         description,
-        file_name: file?.name,
+        file_url: `/uploads/${file?.name}`,
         status: 'Submitted',
-        created_at: new Date().toISOString(),
+        adviser_id: null,
       }
 
-      // Store in localStorage for demo
-      const submissions = JSON.parse(localStorage.getItem('submissions') || '[]')
-      submissions.push(submission)
-      localStorage.setItem('submissions', JSON.stringify(submissions))
+      const { error: insertError } = await supabase
+        .from('thesis_submissions')
+        .insert([newSubmission])
+
+      if (insertError) throw insertError
 
       setSuccess('Thesis submitted successfully!')
+      
+      // Fallback: also save to localStorage for offline support
+      try {
+        const submissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        submissions.push(newSubmission)
+        localStorage.setItem('submissions', JSON.stringify(submissions))
+      } catch (localStorageError) {
+        console.warn('Could not save to localStorage:', localStorageError)
+      }
+
       setTimeout(() => {
         navigate('/student/submissions')
       }, 2000)
     } catch (err) {
+      console.error('Upload error:', err)
       setError(err.message || 'Failed to upload thesis')
+      
+      // Fallback: save to localStorage if Supabase fails
+      try {
+        const submission = {
+          id: `submission-${Date.now()}`,
+          student_id: profile.id,
+          title,
+          description,
+          file_name: file?.name,
+          status: 'Submitted',
+          created_at: new Date().toISOString(),
+        }
+        const submissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        submissions.push(submission)
+        localStorage.setItem('submissions', JSON.stringify(submissions))
+        setSuccess('Saved locally (Supabase connection failed)')
+        setTimeout(() => {
+          navigate('/student/submissions')
+        }, 2000)
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../utils/supabase'
 import { MessageSquare, FileText, CheckCircle, AlertCircle } from 'lucide-react'
 
 export function AdviserReviews() {
@@ -16,14 +17,27 @@ export function AdviserReviews() {
     fetchSubmissions()
   }, [profile?.id])
 
-  function fetchSubmissions() {
+  async function fetchSubmissions() {
     try {
-      // Get all submissions
-      const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
-      setSubmissions(allSubmissions)
+      // Get all submissions for review
+      const { data, error: fetchError } = await supabase
+        .from('thesis_submissions')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (fetchError) throw fetchError
+      setSubmissions(data || [])
     } catch (error) {
       console.error('Error fetching submissions:', error)
       setError(error.message)
+      
+      // Fallback to localStorage
+      try {
+        const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        setSubmissions(allSubmissions)
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     } finally {
       setLoading(false)
     }
@@ -36,38 +50,71 @@ export function AdviserReviews() {
     setError('')
 
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      // Add feedback to localStorage
+      // Add feedback to Supabase
       if (feedback.trim()) {
-        const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
-        allFeedback.push({
-          id: `feedback-${Date.now()}`,
-          submission_id: selectedSubmission.id,
-          adviser_id: profile.id,
-          comment: feedback,
-          created_at: new Date().toISOString(),
-        })
-        localStorage.setItem('feedback', JSON.stringify(allFeedback))
+        const { error: feedbackError } = await supabase
+          .from('feedback')
+          .insert([
+            {
+              id: `feedback-${Date.now()}`,
+              submission_id: selectedSubmission.id,
+              adviser_id: profile.id,
+              comment: feedback,
+            },
+          ])
+
+        if (feedbackError) throw feedbackError
       }
 
-      // Update submission status in localStorage
-      const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
-      const updatedSubmissions = allSubmissions.map((s) =>
-        s.id === selectedSubmission.id
-          ? { ...s, status, adviser_id: profile.id }
-          : s
-      )
-      localStorage.setItem('submissions', JSON.stringify(updatedSubmissions))
+      // Update submission status in Supabase
+      const { error: updateError } = await supabase
+        .from('thesis_submissions')
+        .update({
+          status,
+          adviser_id: profile.id,
+        })
+        .eq('id', selectedSubmission.id)
+
+      if (updateError) throw updateError
 
       // Refresh submissions
-      fetchSubmissions()
+      await fetchSubmissions()
       setSelectedSubmission(null)
       setFeedback('')
       setStatus('Submitted')
     } catch (err) {
+      console.error('Submit feedback error:', err)
       setError(err.message)
+      
+      // Fallback to localStorage
+      try {
+        if (feedback.trim()) {
+          const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
+          allFeedback.push({
+            id: `feedback-${Date.now()}`,
+            submission_id: selectedSubmission.id,
+            adviser_id: profile.id,
+            comment: feedback,
+            created_at: new Date().toISOString(),
+          })
+          localStorage.setItem('feedback', JSON.stringify(allFeedback))
+        }
+
+        const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        const updatedSubmissions = allSubmissions.map((s) =>
+          s.id === selectedSubmission.id
+            ? { ...s, status, adviser_id: profile.id }
+            : s
+        )
+        localStorage.setItem('submissions', JSON.stringify(updatedSubmissions))
+        
+        await fetchSubmissions()
+        setSelectedSubmission(null)
+        setFeedback('')
+        setStatus('Submitted')
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     } finally {
       setSubmitting(false)
     }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../utils/supabase'
 import { FileText, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 
 export function AdviserDashboard() {
@@ -12,18 +13,39 @@ export function AdviserDashboard() {
     fetchData()
   }, [profile?.id])
 
-  function fetchData() {
+  async function fetchData() {
     try {
       // Get all submissions (for demo, adviser sees all)
-      const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
-      setSubmissions(allSubmissions)
+      const { data: submissionsData, error: submissionsError } = await supabase
+        .from('thesis_submissions')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (submissionsError) throw submissionsError
+      setSubmissions(submissionsData || [])
 
       // Count feedback given by this adviser
-      const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
-      const adviserFeedback = allFeedback.filter((f) => f.adviser_id === profile?.id)
-      setFeedbackCount(adviserFeedback.length)
+      const { data: feedbackData, error: feedbackError } = await supabase
+        .from('feedback')
+        .select('id')
+        .eq('adviser_id', profile?.id)
+
+      if (feedbackError) throw feedbackError
+      setFeedbackCount(feedbackData?.length || 0)
     } catch (error) {
       console.error('Error fetching data:', error)
+      
+      // Fallback to localStorage
+      try {
+        const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        setSubmissions(allSubmissions)
+
+        const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
+        const adviserFeedback = allFeedback.filter((f) => f.adviser_id === profile?.id)
+        setFeedbackCount(adviserFeedback.length)
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError)
+      }
     } finally {
       setLoading(false)
     }

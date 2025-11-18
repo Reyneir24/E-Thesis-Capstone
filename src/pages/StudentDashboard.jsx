@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../utils/supabase'
 import { FileText, Clock, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react'
 
 export function StudentDashboard() {
@@ -12,21 +13,52 @@ export function StudentDashboard() {
     fetchSubmissions()
   }, [profile?.id])
 
-  function fetchSubmissions() {
+  async function fetchSubmissions() {
     try {
-      // Load from localStorage
-      const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
-      const userSubmissions = allSubmissions.filter((s) => s.student_id === profile?.id)
-      setSubmissions(userSubmissions)
+      if (!profile?.id) {
+        setLoading(false)
+        return
+      }
 
-      // Load feedback
-      const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
-      const userFeedback = allFeedback.filter((f) =>
-        userSubmissions.some((s) => s.id === f.submission_id)
-      )
-      setFeedbackCount(userFeedback.length)
+      // Fetch user's submissions from Supabase
+      const { data: userSubmissions, error: submissionsError } = await supabase
+        .from('thesis_submissions')
+        .select('*')
+        .eq('student_id', profile.id)
+        .order('created_at', { ascending: false })
+
+      if (submissionsError) throw submissionsError
+
+      setSubmissions(userSubmissions || [])
+
+      // Fetch feedback count for user's submissions
+      if (userSubmissions && userSubmissions.length > 0) {
+        const submissionIds = userSubmissions.map((s) => s.id)
+        const { data: feedbackData, error: feedbackError } = await supabase
+          .from('feedback')
+          .select('id')
+          .in('submission_id', submissionIds)
+
+        if (feedbackError) throw feedbackError
+        setFeedbackCount(feedbackData?.length || 0)
+      } else {
+        setFeedbackCount(0)
+      }
     } catch (error) {
       console.error('Error fetching submissions:', error)
+      // Fallback to localStorage
+      try {
+        const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        const userSubmissions = allSubmissions.filter((s) => s.student_id === profile?.id)
+        setSubmissions(userSubmissions)
+        const allFeedback = JSON.parse(localStorage.getItem('feedback') || '[]')
+        const userFeedback = allFeedback.filter((f) =>
+          userSubmissions.some((s) => s.id === f.submission_id)
+        )
+        setFeedbackCount(userFeedback.length)
+      } catch (fallbackError) {
+        console.error('Fallback localStorage error:', fallbackError)
+      }
     } finally {
       setLoading(false)
     }

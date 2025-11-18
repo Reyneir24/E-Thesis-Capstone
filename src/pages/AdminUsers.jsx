@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { Users, Mail, Trash2, AlertCircle } from 'lucide-react'
+import { Users, Mail, Trash2, AlertCircle, Edit2 } from 'lucide-react'
+import { supabase } from '../utils/supabase'
+import { useAuth } from '../context/AuthContext'
 
 export function AdminUsers() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingUserId, setEditingUserId] = useState(null)
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -14,37 +17,50 @@ export function AdminUsers() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  const { profile: currentProfile } = useAuth()
+
   useEffect(() => {
     fetchUsers()
   }, [])
 
-  function fetchUsers() {
+  async function fetchUsers() {
+    setLoading(true)
     try {
-      // Get mock users from context - for MVP show the 3 demo users
-      const mockUsers = [
-        {
-          id: 'student-001',
-          name: 'John Student',
-          email: 'student@example.com',
-          role: 'student',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 'adviser-001',
-          name: 'Dr. Jane Adviser',
-          email: 'adviser@example.com',
-          role: 'adviser',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 'admin-001',
-          name: 'Admin User',
-          email: 'admin@example.com',
-          role: 'admin',
-          created_at: new Date().toISOString(),
-        },
-      ]
-      setUsers(mockUsers)
+      // Try to fetch users from Supabase
+      const { data, error: fetchErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (fetchErr) {
+        console.error('Supabase fetch users error:', fetchErr)
+        setError(fetchErr.message || 'Failed to fetch users')
+        // Fallback to localStorage mock
+        const stored = localStorage.getItem('users')
+        if (stored) {
+          setUsers(JSON.parse(stored))
+        }
+        return
+      }
+
+      // If no users in DB yet, seed with mock users (dev only)
+      if (!data || data.length === 0) {
+        const mockUsers = [
+          { id: 'student-001', name: 'John Student', email: 'student@example.com', role: 'student', created_at: new Date().toISOString() },
+          { id: 'adviser-001', name: 'Dr. Jane Adviser', email: 'adviser@example.com', role: 'adviser', created_at: new Date().toISOString() },
+          { id: 'admin-001', name: 'Admin User', email: 'admin@example.com', role: 'admin', created_at: new Date().toISOString() },
+        ]
+        const { data: inserted, error: insertErr } = await supabase.from('profiles').insert(mockUsers)
+        if (insertErr) {
+          console.error('Error seeding users:', insertErr)
+          setError(insertErr.message)
+        } else {
+          setUsers(inserted)
+        }
+        return
+      }
+
+      setUsers(data)
     } catch (error) {
       console.error('Error fetching users:', error)
       setError(error.message)
@@ -52,27 +68,112 @@ export function AdminUsers() {
       setLoading(false)
     }
   }
-
-  function handleCreateUser(e) {
+  async function saveUser(e) {
     e.preventDefault()
     setError('')
     setSuccess('')
 
     try {
-      // Create new user in mock system
-      const newUser = {
-        id: `user-${Date.now()}`,
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        role: formData.role,
-        created_at: new Date().toISOString(),
+      // Email uniqueness check
+      if (!editingUserId) {
+        // When creating new user - check if email exists
+        const { data: existing } = await supabase.from('profiles').select('id').eq('email', formData.email).maybeSingle()
+        if (existing) {
+          setError('A user with that email already exists')
+          return
+        }
+      } else {
+        // When editing - check if new email is different and unique
+        const currentUser = users.find(u => u.id === editingUserId)
+        if (formData.email !== currentUser?.email) {
+          const { data: existing } = await supabase.from('profiles').select('id').eq('email', formData.email).maybeSingle()
+          if (existing) {
+            setError('A user with that email already exists')
+            return
+          }
+        }
       }
 
-      setUsers([newUser, ...users])
-      setSuccess('User created successfully')
-      setFormData({ name: '', email: '', password: '', role: 'student' })
-      setShowForm(false)
+      if (editingUserId) {
+        // Update existing user in Supabase
+        const updateData = {
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+          updated_at: new Date().toISOString()
+        }
+        
+        const { data: updated, error: updateErr } = await supabase
+          .from('profiles')
+          .update(updateData)
+          .eq('id', editingUserId)
+          .select()
+          .single()
+        
+        if (updateErr) {
+          console.error('Update error:', updateErr)
+          setError(updateErr.message || 'Failed to update user')
+        } else {
+          setSuccess('User updated successfully!')
+          await fetchUsers()
+          setFormData({ name: '', email: '', password: '', role: 'student' })
+          setShowForm(false)
+          setEditingUserId(null)
+        }
+      } else {
+        // Create new user in Supabase
+        const newUser = {
+          id: `user-${Date.now()}`,
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+          created_at: new Date().toISOString(),
+        }
+
+        const { data: inserted, error: insertErr } = await supabase.from('profiles').insert([newUser]).select().single()
+        if (insertErr) {
+          console.error('Insert error:', insertErr)
+          setError(insertErr.message || 'Failed to create user')
+        } else {
+          setSuccess('User created successfully!')
+          await fetchUsers()
+          setFormData({ name: '', email: '', password: '', role: 'student' })
+          setShowForm(false)
+          setEditingUserId(null)
+        }
+      }
+    } catch (err) {
+      console.error('Save user error:', err)
+      setError(err.message || 'An error occurred while saving')
+    }
+  }
+
+  function startEdit(user) {
+    setEditingUserId(user.id)
+    setFormData({ name: user.name || '', email: user.email || '', password: '', role: user.role || 'student' })
+    setShowForm(true)
+    setError('')
+    setSuccess('')
+  }
+
+  async function handleDelete(userId) {
+    if (!confirm('Delete this user? This action cannot be undone.')) return
+
+    // Prevent deleting currently logged-in admin
+    if (currentProfile && currentProfile.id === userId) {
+      setError('You cannot delete your own account while logged in')
+      return
+    }
+
+    try {
+      const { error: delErr } = await supabase.from('profiles').delete().eq('id', userId)
+      if (delErr) {
+        setError(delErr.message)
+      } else {
+        setSuccess('User deleted')
+        await fetchUsers()
+      }
     } catch (err) {
       setError(err.message)
     }
@@ -119,10 +220,21 @@ export function AdminUsers() {
           <p className="text-sm opacity-90">Create and manage system users</p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            // Toggle form; cancel edit if open
+            if (showForm) {
+              setShowForm(false)
+              setEditingUserId(null)
+              setFormData({ name: '', email: '', password: '', role: 'student' })
+              setError('')
+              setSuccess('')
+            } else {
+              setShowForm(true)
+            }
+          }}
           className="ml-6 px-6 py-3 bg-escr-red hover:bg-red-700 text-white rounded-lg transition font-medium"
         >
-          {showForm ? 'Cancel' : 'Create User'}
+          {showForm ? (editingUserId ? 'Cancel Edit' : 'Cancel') : 'Create User'}
         </button>
       </div>
 
@@ -141,7 +253,7 @@ export function AdminUsers() {
             </div>
           )}
 
-          <form onSubmit={handleCreateUser} className="space-y-4">
+          <form onSubmit={saveUser} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input
                 type="text"
@@ -166,8 +278,9 @@ export function AdminUsers() {
                 placeholder="Password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-escr-red focus:border-transparent outline-none"
+                // password not required on edit
+                required={!editingUserId}
               />
               <select
                 value={formData.role}
@@ -183,7 +296,7 @@ export function AdminUsers() {
               type="submit"
               className="w-full py-2 px-4 bg-escr-red hover:bg-red-700 text-white rounded-lg transition font-medium"
             >
-              Create User
+              {editingUserId ? 'Save Changes' : 'Create User'}
             </button>
           </form>
         </div>
@@ -225,8 +338,11 @@ export function AdminUsers() {
                   <td className="px-6 py-4 text-gray-600 text-sm">
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4">
-                    <button className="text-red-600 hover:text-red-800 transition">
+                  <td className="px-6 py-4 flex items-center gap-3">
+                    <button onClick={() => startEdit(user)} className="text-gray-600 hover:text-gray-800 transition">
+                      <Edit2 size={18} />
+                    </button>
+                    <button onClick={() => handleDelete(user.id)} className="text-red-600 hover:text-red-800 transition">
                       <Trash2 size={18} />
                     </button>
                   </td>

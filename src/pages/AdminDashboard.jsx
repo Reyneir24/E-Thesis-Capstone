@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { Users, FileText, CheckCircle, TrendingUp } from 'lucide-react'
+import supabase from '../utils/supabase'
 
 export function AdminDashboard() {
   const { profile } = useAuth()
   const [stats, setStats] = useState({
-    totalStudents: 1,
-    totalAdvisers: 1,
+    totalStudents: 0,
+    totalAdvisers: 0,
     totalSubmissions: 0,
     approvedCount: 0,
   })
@@ -16,20 +17,48 @@ export function AdminDashboard() {
     fetchStats()
   }, [])
 
-  function fetchStats() {
+  async function fetchStats() {
     try {
-      // Get submissions from localStorage
-      const submissions = JSON.parse(localStorage.getItem('submissions') || '[]')
-      const approved = submissions.filter((s) => s.status === 'Approved').length
+      // Fetch all profiles to count students and advisers
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact' })
+
+      if (profilesError) throw profilesError
+
+      const students = profiles?.filter((p) => p.role === 'student').length || 0
+      const advisers = profiles?.filter((p) => p.role === 'adviser').length || 0
+
+      // Fetch submissions and count approved
+      const { data: submissions, error: submissionsError } = await supabase
+        .from('thesis_submissions')
+        .select('*', { count: 'exact' })
+
+      if (submissionsError) throw submissionsError
+
+      const approved = submissions?.filter((s) => s.status === 'Approved').length || 0
 
       setStats({
-        totalStudents: 1, // Mock: 1 student demo account
-        totalAdvisers: 1, // Mock: 1 adviser demo account
-        totalSubmissions: submissions.length,
+        totalStudents: students,
+        totalAdvisers: advisers,
+        totalSubmissions: submissions?.length || 0,
         approvedCount: approved,
       })
     } catch (error) {
       console.error('Error fetching stats:', error)
+      // Fallback to localStorage
+      try {
+        const submissions = JSON.parse(localStorage.getItem('submissions') || '[]')
+        const approved = submissions.filter((s) => s.status === 'Approved').length
+        setStats({
+          totalStudents: 1,
+          totalAdvisers: 1,
+          totalSubmissions: submissions.length,
+          approvedCount: approved,
+        })
+      } catch (e) {
+        console.error('Fallback error:', e)
+      }
     } finally {
       setLoading(false)
     }
