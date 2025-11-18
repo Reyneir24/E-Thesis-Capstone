@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Users, FileText, CheckCircle, TrendingUp } from 'lucide-react'
 import supabase from '../utils/supabase'
 
 export function AdminDashboard() {
+  const navigate = useNavigate()
   const { profile } = useAuth()
   const [stats, setStats] = useState({
     totalStudents: 0,
@@ -115,13 +117,22 @@ export function AdminDashboard() {
         <div className="bg-white rounded-lg shadow-soft p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">Quick Actions</h2>
           <div className="space-y-3">
-            <button className="w-full py-3 px-4 bg-escr-red hover:bg-red-700 text-white rounded-lg transition font-medium">
+            <button 
+              onClick={() => navigate('/admin/users')}
+              className="w-full py-3 px-4 bg-escr-red hover:bg-red-700 text-white rounded-lg transition font-medium"
+            >
               Create New User
             </button>
-            <button className="w-full py-3 px-4 bg-escr-yellow hover:bg-yellow-600 text-gray-800 rounded-lg transition font-medium">
+            <button 
+              onClick={() => navigate('/admin/assignments')}
+              className="w-full py-3 px-4 bg-escr-yellow hover:bg-yellow-600 text-gray-800 rounded-lg transition font-medium"
+            >
               Manage Assignments
             </button>
-            <button className="w-full py-3 px-4 bg-escr-orange hover:bg-orange-700 text-white rounded-lg transition font-medium">
+            <button 
+              onClick={() => navigate('/admin/reports')}
+              className="w-full py-3 px-4 bg-escr-orange hover:bg-orange-700 text-white rounded-lg transition font-medium"
+            >
               View Reports
             </button>
           </div>
