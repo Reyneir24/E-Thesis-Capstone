@@ -2,15 +2,23 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
-import { Users, RefreshCw, AlertCircle, Plus, CheckCircle, X } from 'lucide-react'
+import { Users, RefreshCw, AlertCircle, Plus, CheckCircle, X, Copy } from 'lucide-react'
 
-// Function to generate UUID v4
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = (Math.random() * 16) | 0
     const v = c === 'x' ? r : (r & 0x3) | 0x8
     return v.toString(16)
   })
+}
+
+function generatePassword() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%'
+  let password = ''
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return password
 }
 
 export function AdviserStudents() {
@@ -21,89 +29,62 @@ export function AdviserStudents() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-  })
+  const [formData, setFormData] = useState({ name: '', email: '' })
+  const [generatedPassword, setGeneratedPassword] = useState('')
+  const [showPasswordAlert, setShowPasswordAlert] = useState(false)
 
   useEffect(() => {
     if (!profile?.id) return
-
     fetchStudents(true)
-
     const channel = supabase
       .channel(`adviser-students-${profile.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'adviser_assignments',
-          filter: `adviser_id=eq.${profile.id}`,
-        },
-        () => fetchStudents()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'profiles' },
-        () => fetchStudents()
-      )
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'adviser_assignments',
+        filter: `adviser_id=eq.${profile.id}`,
+      }, () => fetchStudents())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchStudents())
       .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => supabase.removeChannel(channel)
   }, [profile?.id])
 
   async function fetchStudents(showSpinner = false) {
     if (!profile?.id) return
-    if (showSpinner) {
-      setLoading(true)
-    }
+    if (showSpinner) setLoading(true)
     setError('')
-
     try {
       const { data: assignments, error: assignmentsError } = await supabase
         .from('adviser_assignments')
         .select('student_id')
         .eq('adviser_id', profile.id)
-
       if (assignmentsError) throw assignmentsError
-
-      const studentIds = assignments?.map((assignment) => assignment.student_id) || []
-
+      const studentIds = assignments?.map((a) => a.student_id) || []
       if (studentIds.length === 0) {
         setStudents([])
         localStorage.setItem('assignedStudents', JSON.stringify([]))
         if (showSpinner) setLoading(false)
         return
       }
-
       const { data: studentProfiles, error: profilesError } = await supabase
         .from('profiles')
         .select('id, name, email, role')
         .in('id', studentIds)
-
       if (profilesError) throw profilesError
-
-      const sortedStudents = (studentProfiles || []).sort((a, b) => a.name.localeCompare(b.name))
-      setStudents(sortedStudents)
-      localStorage.setItem('assignedStudents', JSON.stringify(sortedStudents))
+      const sorted = (studentProfiles || []).sort((a, b) => a.name.localeCompare(b.name))
+      setStudents(sorted)
+      localStorage.setItem('assignedStudents', JSON.stringify(sorted))
     } catch (err) {
       console.error('Error fetching students:', err)
       setError(err.message || 'Failed to load students')
-
-      // Fallback to cached data
       try {
         const cached = JSON.parse(localStorage.getItem('assignedStudents') || '[]')
         setStudents(cached)
       } catch (cacheError) {
-        console.error('Error loading cached students:', cacheError)
+        console.error('Cache error:', cacheError)
       }
     } finally {
-      if (showSpinner) {
-        setLoading(false)
-      }
+      if (showSpinner) setLoading(false)
     }
   }
 
@@ -111,31 +92,29 @@ export function AdviserStudents() {
     e.preventDefault()
     setError('')
     setSuccess('')
-
     try {
       if (!formData.name || !formData.email) {
         setError('Please fill in all fields')
         return
       }
-
-      // Check if email already exists
       const { data: existing } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', formData.email)
         .maybeSingle()
-
       if (existing) {
         setError('A student with that email already exists')
         return
       }
 
-      // Create new student profile
+      const tempPassword = generatePassword()
       const newStudent = {
         id: generateUUID(),
         name: formData.name,
         email: formData.email,
+        password: tempPassword,
         role: 'student',
+        first_login: true,
         created_at: new Date().toISOString(),
       }
 
@@ -144,20 +123,15 @@ export function AdviserStudents() {
         .insert([newStudent])
         .select()
         .single()
-
       if (createError) throw createError
 
-      // Assign student to adviser
       const { error: assignError } = await supabase
         .from('adviser_assignments')
-        .insert([{
-          student_id: createdStudent.id,
-          adviser_id: profile.id,
-        }])
-
+        .insert([{ student_id: createdStudent.id, adviser_id: profile.id }])
       if (assignError) throw assignError
 
-      setSuccess('Student added and assigned successfully!')
+      setGeneratedPassword(tempPassword)
+      setShowPasswordAlert(true)
       setFormData({ name: '', email: '' })
       setShowForm(false)
       setTimeout(() => fetchStudents(true), 1000)
@@ -180,7 +154,6 @@ export function AdviserStudents() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-gradient-to-r from-escr-red to-escr-orange rounded-lg shadow-soft p-8 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold mb-2">My Students</h1>
@@ -206,6 +179,35 @@ export function AdviserStudents() {
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
           <CheckCircle className="text-green-600" size={20} />
           <p className="text-sm text-green-700">{success}</p>
+        </div>
+      )}
+
+      {/* Password Alert */}
+      {showPasswordAlert && generatedPassword && (
+        <div className="p-6 bg-blue-50 border-2 border-blue-400 rounded-lg">
+          <h3 className="text-lg font-bold text-blue-900 mb-3">🔐 Temporary Password Generated</h3>
+          <p className="text-sm text-blue-800 mb-4">Share this password with the student. They will be required to change it on first login.</p>
+          <div className="bg-white p-4 rounded border border-blue-300 mb-4">
+            <p className="text-xs text-gray-600 mb-2">Temporary Password:</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 font-mono text-lg font-bold text-blue-600 bg-gray-100 p-3 rounded">{generatedPassword}</code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedPassword)
+                  alert('Password copied!')
+                }}
+                className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded transition"
+              >
+                <Copy size={18} />
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowPasswordAlert(false)}
+            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+          >
+            Done
+          </button>
         </div>
       )}
 
@@ -290,8 +292,8 @@ export function AdviserStudents() {
                   try {
                     localStorage.setItem('selectedStudentId', student.id)
                     localStorage.setItem('selectedStudentName', student.name || '')
-                  } catch (storageError) {
-                    console.error('Failed to cache student filter:', storageError)
+                  } catch (e) {
+                    console.error('Storage error:', e)
                   }
                   navigate('/adviser/reviews')
                 }}

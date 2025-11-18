@@ -118,6 +118,7 @@ export function AuthProvider({ children }) {
           name: profileData.name,
           email: profileData.email,
           role: profileData.role,
+                 first_login: profileData.first_login || false,
         }
 
         localStorage.setItem('currentUser', JSON.stringify(userData))
@@ -148,6 +149,7 @@ export function AuthProvider({ children }) {
         name: profileFromDb.name,
         email: profileFromDb.email,
         role: profileFromDb.role,
+        first_login: profileFromDb.first_login || false,
       }
 
       localStorage.setItem('currentUser', JSON.stringify(userData))
@@ -161,6 +163,42 @@ export function AuthProvider({ children }) {
   }
 
   async function logout() {
+       async function updatePassword(newPassword) {
+         if (!user?.id) {
+           return { error: { message: 'Not authenticated' } }
+         }
+
+         try {
+           const { data, error } = await supabase
+             .from('profiles')
+             .update({ 
+               password: newPassword,
+               first_login: false
+             })
+             .eq('id', user.id)
+             .select()
+             .maybeSingle()
+
+           if (error) {
+             return { error }
+           }
+
+           // Update local state
+           const updatedProfile = {
+             ...profile,
+             password: newPassword,
+             first_login: false,
+           }
+           localStorage.setItem('currentUser', JSON.stringify(updatedProfile))
+           setProfile(updatedProfile)
+
+           return { data, error: null }
+         } catch (err) {
+           return { error: err }
+         }
+       }
+
+       async function logout() {
     localStorage.removeItem('currentUser')
     setUser(null)
     setProfile(null)
@@ -168,7 +206,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, login, logout, updatePassword }}>
       {children}
     </AuthContext.Provider>
   )

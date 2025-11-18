@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { Login } from './pages/Login'
+import { ChangePassword } from './pages/ChangePassword'
 import { ProtectedRoute } from './routes/ProtectedRoute'
 import { Navbar } from './components/Navbar'
 import { Sidebar } from './components/Sidebar'
@@ -55,6 +56,7 @@ function App() {
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
+  <Route path="/change-password" element={<ChangePassword />} />
 
           {/* Student Routes */}
           <Route

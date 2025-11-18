@@ -25,7 +25,13 @@ export function Login() {
         return
       }
 
-      // Redirect based on role
+       // Check if first login (password change required)
+       if (data?.user?.first_login) {
+         navigate('/change-password')
+         return
+       }
+
+       // Redirect based on role
       if (data?.user?.role === 'student') {
         navigate('/student/dashboard')
       } else if (data?.user?.role === 'adviser') {
