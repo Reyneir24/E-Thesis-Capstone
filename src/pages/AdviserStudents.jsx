@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
-import { Users, RefreshCw, AlertCircle } from 'lucide-react'
+import { Users, RefreshCw, AlertCircle, Plus, CheckCircle, X } from 'lucide-react'
+
+// Function to generate UUID v4
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
 
 export function AdviserStudents() {
   const { profile } = useAuth()
@@ -10,6 +19,12 @@ export function AdviserStudents() {
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+  })
 
   useEffect(() => {
     if (!profile?.id) return
@@ -92,6 +107,66 @@ export function AdviserStudents() {
     }
   }
 
+  async function handleAddStudent(e) {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+
+    try {
+      if (!formData.name || !formData.email) {
+        setError('Please fill in all fields')
+        return
+      }
+
+      // Check if email already exists
+      const { data: existing } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', formData.email)
+        .maybeSingle()
+
+      if (existing) {
+        setError('A student with that email already exists')
+        return
+      }
+
+      // Create new student profile
+      const newStudent = {
+        id: generateUUID(),
+        name: formData.name,
+        email: formData.email,
+        role: 'student',
+        created_at: new Date().toISOString(),
+      }
+
+      const { data: createdStudent, error: createError } = await supabase
+        .from('profiles')
+        .insert([newStudent])
+        .select()
+        .single()
+
+      if (createError) throw createError
+
+      // Assign student to adviser
+      const { error: assignError } = await supabase
+        .from('adviser_assignments')
+        .insert([{
+          student_id: createdStudent.id,
+          adviser_id: profile.id,
+        }])
+
+      if (assignError) throw assignError
+
+      setSuccess('Student added and assigned successfully!')
+      setFormData({ name: '', email: '' })
+      setShowForm(false)
+      setTimeout(() => fetchStudents(true), 1000)
+    } catch (err) {
+      console.error('Error adding student:', err)
+      setError(err.message || 'Failed to add student')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -108,7 +183,7 @@ export function AdviserStudents() {
       {/* Header */}
       <div className="bg-gradient-to-r from-escr-red to-escr-orange rounded-lg shadow-soft p-8 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Assigned Students</h1>
+          <h1 className="text-3xl font-bold mb-2">My Students</h1>
           <p className="text-sm opacity-90">Manage and review your assigned student submissions</p>
         </div>
         <button
@@ -127,6 +202,66 @@ export function AdviserStudents() {
         </div>
       )}
 
+      {success && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+          <CheckCircle className="text-green-600" size={20} />
+          <p className="text-sm text-green-700">{success}</p>
+        </div>
+      )}
+
+      {/* Add Student Form */}
+      {!showForm ? (
+        <button
+          onClick={() => setShowForm(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-escr-red hover:bg-red-700 text-white rounded-lg transition font-medium"
+        >
+          <Plus size={18} />
+          Add New Student
+        </button>
+      ) : (
+        <div className="bg-white rounded-lg shadow-soft p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-800">Add New Student</h2>
+            <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-gray-700">
+              <X size={20} />
+            </button>
+          </div>
+          <form onSubmit={handleAddStudent} className="space-y-4">
+            <input
+              type="text"
+              placeholder="Full Name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-escr-red focus:border-transparent outline-none"
+            />
+            <input
+              type="email"
+              placeholder="Email Address"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-escr-red focus:border-transparent outline-none"
+            />
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                className="flex-1 py-2 px-4 bg-escr-red hover:bg-red-700 text-white rounded-lg transition font-medium"
+              >
+                Add Student
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="flex-1 py-2 px-4 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Students Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {students.length === 0 ? (
@@ -136,12 +271,13 @@ export function AdviserStudents() {
           </div>
         ) : (
           students.map((student) => (
-            <div key={student.id} className="bg-white rounded-lg shadow-soft p-6 hover:shadow-md transition border border-transparent hover:border-escr-yellow">
+            <div
+              key={student.id}
+              className="bg-white rounded-lg shadow-soft p-6 hover:shadow-md transition border border-transparent hover:border-escr-yellow"
+            >
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-12 h-12 bg-escr-yellow rounded-full flex items-center justify-center">
-                  <span className="text-lg font-bold text-escr-red">
-                    {student.name?.[0]?.toUpperCase()}
-                  </span>
+                  <span className="text-lg font-bold text-escr-red">{student.name?.[0]?.toUpperCase()}</span>
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-800">{student.name}</h3>
