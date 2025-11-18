@@ -100,7 +100,7 @@ export function RightPanel() {
     <div className="bg-white rounded-lg shadow-soft p-6 h-full overflow-y-auto">
       {/* Logo */}
       <div className="flex justify-center mb-4">
-        <img src={logo} alt="Thesis Pro" className="w-12 h-12" />
+        <img src={logo} alt="East System Colleges of Rizal" className="w-12 h-12" />
       </div>
 
       {/* Profile Card */}

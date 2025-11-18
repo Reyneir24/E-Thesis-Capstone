@@ -158,7 +158,7 @@ export function Login() {
 
         {/* Footer */}
         <p className="text-center text-gray-600 text-sm mt-6">
-          Powered by Thesis Pro • Built with React & TailwindCSS
+          Powered by East System Colleges of Rizal • Built with React & TailwindCSS
         </p>
       </div>
     </div>

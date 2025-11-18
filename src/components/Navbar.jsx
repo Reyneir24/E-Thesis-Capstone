@@ -24,8 +24,8 @@ export function Navbar({ onMenuClick }) {
             <Menu size={24} />
           </button>
           <div className="flex items-center gap-3">
-            <img src={logo} alt="Thesis Pro" className="w-8 h-8" />
-            <h1 className="text-2xl font-bold text-escr-red">Thesis Pro</h1>
+            <img src={logo} alt="East System Colleges of Rizal" className="w-8 h-8" />
+            <h1 className="text-2xl font-bold text-escr-red">ESCR</h1>
           </div>
         </div>
 

@@ -50,8 +50,8 @@ export function Sidebar({ isOpen, onClose }) {
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src={logo} alt="Thesis Pro" className="w-8 h-8" />
-              <h2 className="text-xl font-bold text-escr-red">Thesis Pro</h2>
+              <img src={logo} alt="East System Colleges of Rizal" className="w-8 h-8" />
+              <h2 className="text-xl font-bold text-escr-red">ESCR</h2>
             </div>
             <button onClick={onClose} className="lg:hidden">
               <X size={24} />
