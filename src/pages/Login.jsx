@@ -160,6 +160,14 @@ export function Login() {
               <p className="font-medium">All accounts use: password123</p>
             </div>
           </div>
+
+          {/* Register Link */}
+          <div className="mt-4 text-center">
+            <p className="text-sm text-gray-600">Don't have an account?</p>
+            <button onClick={() => navigate('/register')} className="text-escr-yellow hover:underline font-medium mt-2">
+              Register as Student
+            </button>
+          </div>
         </div>
 
         {/* Footer */}

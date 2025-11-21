@@ -136,27 +136,68 @@ export function AdminUsers() {
           setEditingUserId(null)
         }
       } else {
-        // Create new user in Supabase
-        const newUser = {
-          id: generateUUID(),
-          name: formData.name,
-          email: formData.email,
-          role: formData.role,
-          created_at: new Date().toISOString(),
-          // include password if provided by admin
-          ...(formData.password ? { password: formData.password, first_login: false } : {}),
-        }
+        // Create new user: if admin supplied a password, create an Auth user first
+        if (formData.password) {
+          // create auth user via signUp
+          const { data: signData, error: signErr } = await supabase.auth.signUp({
+            email: formData.email.trim(),
+            password: formData.password,
+          })
 
-        const { data: inserted, error: insertErr } = await supabase.from('profiles').insert([newUser]).select().single()
-        if (insertErr) {
-          console.error('Insert error:', insertErr)
-          setError(insertErr.message || 'Failed to create user')
-        } else {
+          if (signErr) {
+            console.error('Auth create error:', signErr)
+            setError(signErr.message || 'Failed to create auth account')
+            return
+          }
+
+          const userId = signData?.user?.id
+          if (!userId) {
+            setError('Failed to create auth account')
+            return
+          }
+
+          const newUser = {
+            id: userId,
+            name: formData.name,
+            email: formData.email,
+            role: formData.role,
+            first_login: true,
+            created_at: new Date().toISOString(),
+          }
+
+          const { data: inserted, error: insertErr } = await supabase.from('profiles').insert([newUser]).select().maybeSingle()
+          if (insertErr) {
+            console.error('Insert error:', insertErr)
+            setError(insertErr.message || 'Failed to create profile')
+            return
+          }
+
           setSuccess('User created successfully!')
           await fetchUsers()
           setFormData({ name: '', email: '', password: '', role: 'student' })
           setShowForm(false)
           setEditingUserId(null)
+        } else {
+          // Create profile-only record when no password provided (legacy behavior)
+          const newUser = {
+            id: generateUUID(),
+            name: formData.name,
+            email: formData.email,
+            role: formData.role,
+            created_at: new Date().toISOString(),
+          }
+
+          const { data: inserted, error: insertErr } = await supabase.from('profiles').insert([newUser]).select().maybeSingle()
+          if (insertErr) {
+            console.error('Insert error:', insertErr)
+            setError(insertErr.message || 'Failed to create user')
+          } else {
+            setSuccess('User created successfully!')
+            await fetchUsers()
+            setFormData({ name: '', email: '', password: '', role: 'student' })
+            setShowForm(false)
+            setEditingUserId(null)
+          }
         }
       }
     } catch (err) {

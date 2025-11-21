@@ -108,11 +108,25 @@ export function AdviserStudents() {
       }
 
       const tempPassword = generatePassword()
-      const newStudent = {
-        id: generateUUID(),
+
+      // Create Auth user via Supabase signUp (creates an auth user and returns id)
+      const { data: signData, error: signError } = await supabase.auth.signUp({
+        email: formData.email.trim(),
+        password: tempPassword,
+      })
+
+      if (signError) {
+        throw signError
+      }
+
+      const userId = signData?.user?.id
+      if (!userId) throw new Error('Failed to create auth user')
+
+      // Insert profile row
+      const profileRow = {
+        id: userId,
         name: formData.name,
         email: formData.email,
-        password: tempPassword,
         role: 'student',
         first_login: true,
         created_at: new Date().toISOString(),
@@ -120,9 +134,9 @@ export function AdviserStudents() {
 
       const { data: createdStudent, error: createError } = await supabase
         .from('profiles')
-        .insert([newStudent])
+        .insert([profileRow])
         .select()
-        .single()
+        .maybeSingle()
       if (createError) throw createError
 
       const { error: assignError } = await supabase
