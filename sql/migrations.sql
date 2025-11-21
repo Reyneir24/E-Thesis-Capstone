@@ -330,3 +330,8 @@ ALTER TABLE profiles
 -- Backfill existing rows to ensure explicit default values
 UPDATE profiles SET first_login = FALSE WHERE first_login IS NULL;
 
+-- Ensure profiles has a `program` column for student program/major
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS program TEXT;
+
+
